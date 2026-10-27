@@ -1,0 +1,40 @@
+ 'use strict';
+const DAYS=['Понедельник','Вторник','Среда','Четверг','Пятница','Суббота','Воскресенье'];
+const TYPES=['Завтрак','Обед','Перекус','Ужин'];
+const $=id=>document.getElementById(id);
+const safe=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const base=[2300,1650];
+let day=Math.min(13,Math.max(0,Number(localStorage.getItem('weeklyMenuDay')||0)||0));
+function readNum(key,def){let n=Number(localStorage.getItem(key));return Number.isFinite(n)&&n>=0?n:def}
+let goals=[readNum('goalM',2300),readNum('goalF',1650)];
+const DESSERTS=[['Шоколад молочный',535],['Шоколад тёмный',550],['Печенье песочное',480],['Печенье овсяное',450],['Конфеты шоколадные',510],['Зефир',320],['Мармелад',320],['Мороженое пломбир',230],['Мороженое фруктовое',115],['Торт бисквитный',350],['Чизкейк',320],['Вафли',500],['Круассан',410],['Мёд',330],['Варенье',260],['Халва',520],['Пастила',320],['Сгущёнка',320],['Булочка сладкая',330],['Пряник',350]];
+function dessertKey(person){return 'dailyplate-desserts-v1-'+day+'-'+person}
+function getDesserts(person){try{const x=JSON.parse(localStorage.getItem(dessertKey(person))||'[]');return Array.isArray(x)?x.filter(v=>Number.isInteger(v.id)&&v.id>=0&&v.id<DESSERTS.length&&Number.isFinite(v.grams)&&v.grams>0):[]}catch{return []}}
+function dessertCalories(person){return Math.round(getDesserts(person).reduce((sum,item)=>sum+DESSERTS[item.id][1]*item.grams/100,0))}
+function dessertTotals(){return [dessertCalories(0),dessertCalories(1)]}
+function fmt(n){return String(Math.max(0,Math.round(n/5)*5))}
+function scalePortion(text,ratio){return text.replace(/(\d+(?:[.,]\d+)?)\s*(г|кг|мл|л|шт\.?|яйц[ао]?|яйцо|яйца|яиц)/gi,(all,n,unit)=>{let x=Number(n.replace(',','.'))*ratio;let round=(unit.toLowerCase().startsWith('яй')||unit.toLowerCase()==='шт.')?Math.max(1,Math.round(x)):Math.max(5,Math.round(x/5)*5);return round+' '+unit})}
+function factors(){const c=dessertTotals();return goals.map((g,i)=>Math.max(0,(g-c[i])/base[i]))}
+function renderSettings(){const f=factors(),c=dessertTotals();$('maleGoal').value=goals[0];$('femaleGoal').value=goals[1];$('maleTarget').innerHTML=goals[0]+' <small>ккал</small>';$('femaleTarget').innerHTML=goals[1]+' <small>ккал</small>';$('budget').innerHTML=goals.map((g,i)=>`<div>${i===0?'Парень':'Девушка'}: <b>${Math.max(0,g-c[i])} ккал</b> на основную еду + ${c[i]} ккал на десерты · порции ×${f[i].toFixed(2)}${c[i]>=g?' <strong class="dessert-warning">⚠ Сладкое исчерпало дневной лимит</strong>':''}</div>`).join('')}
+function renderDesserts(){for(let person=0;person<2;person++){const prefix=person===0?'male':'female';const items=getDesserts(person);$(prefix+'DessertTotal').textContent=dessertCalories(person)+' ккал';$(prefix+'DessertList').innerHTML=items.length?items.map((v,i)=>`<div class="dessert-item"><span>${safe(DESSERTS[v.id][0])} · ${v.grams} г <small>${Math.round(DESSERTS[v.id][1]*v.grams/100)} ккал</small></span><button type="button" data-remove="${person}-${i}" aria-label="Удалить десерт">×</button></div>`).join(''):'<p class="dessert-empty">Сегодня без сладкого — пока что ✨</p>'}document.querySelectorAll('[data-remove]').forEach(btn=>btn.onclick=()=>{const [person,index]=btn.dataset.remove.split('-').map(Number),items=getDesserts(person);items.splice(index,1);localStorage.setItem(dessertKey(person),JSON.stringify(items));refreshFood()})}
+function refreshFood(){renderDesserts();renderSettings();renderDay()}
+function addDessert(person){const prefix=person===0?'male':'female',id=Number($(prefix+'DessertSelect').value),grams=Number($(prefix+'DessertGrams').value);if(!Number.isInteger(id)||id<0||id>=DESSERTS.length||!Number.isFinite(grams)||grams<=0||grams>1000){alert('Укажи вес от 1 до 1000 г.');return}const items=getDesserts(person);items.push({id,grams});localStorage.setItem(dessertKey(person),JSON.stringify(items));refreshFood()}
+for(let person=0;person<2;person++){const prefix=person===0?'male':'female';$(prefix+'DessertSelect').innerHTML=DESSERTS.map(([name,kcal],id)=>`<option value="${id}">${safe(name)} · ${kcal} ккал/100 г</option>`).join('');$(prefix+'DessertAdd').onclick=()=>addDessert(person)}
+function renderDay(){const w=Math.floor(day/7),d=day%7,f=factors();$('dayTitle').textContent=DAYS[d];$('daySubtitle').textContent=`Неделя ${w+1} · день ${d+1} из 7`;
+ ['week1','week2'].forEach((id,i)=>$(id).classList.toggle('selected',w===i));
+ $('dayTabs').innerHTML=DAYS.map((name,i)=>`<button type="button" class="${i===d?'active':''}" data-day="${w*7+i}" aria-label="${name}">${['Пн','Вт','Ср','Чт','Пт','Сб','Вс'][i]}</button>`).join('');
+ $('mealCards').innerHTML=MENU[day].map((m,i)=>`<details class="meal" ${i===0?'open':''}><summary><span class="chevron">⌄</span><span class="type">${TYPES[i]}</span><h3>${safe(m[0])}</h3><div class="portions"><div class="portion"><b>Парень · ×${f[0].toFixed(2)}</b>${safe(scalePortion(m[1],f[0]))}</div><div class="portion"><b>Девушка · ×${f[1].toFixed(2)}</b>${safe(scalePortion(m[2],f[1]))}</div></div></summary><div class="recipe"><hr><h4>Ингредиенты на двоих · ориентировочно</h4><p>${safe(scalePortion(m[3],(f[0]+f[1])/2))}</p><p class="muted">Ингредиенты рассчитаны по среднему коэффициенту порций; при готовке ориентируйся на персональные граммовки выше.</p><h4>Как приготовить</h4><p>${safe(m[4])}</p></div></details>`).join('');
+ document.querySelectorAll('[data-day]').forEach(b=>b.addEventListener('click',()=>setDay(Number(b.dataset.day))));$('expand').textContent='Раскрыть все рецепты';}
+function setDay(n){day=(n+14)%14;localStorage.setItem('weeklyMenuDay',day);refreshFood()}
+$('prev').addEventListener('click',()=>setDay(day-1));$('next').addEventListener('click',()=>setDay(day+1));$('week1').onclick=()=>setDay(day%7);$('week2').onclick=()=>setDay(7+day%7);
+$('expand').addEventListener('click',()=>{let items=[...document.querySelectorAll('.meal')];let expand=!items.every(d=>d.open);items.forEach(d=>d.open=expand);$('expand').textContent=expand?'Свернуть все рецепты':'Раскрыть все рецепты'});
+function showTab(shop){$('menuView').hidden=shop;$('shopView').hidden=!shop;$('tabMenu').classList.toggle('selected',!shop);$('tabShop').classList.toggle('selected',shop);$('tabMenu').setAttribute('aria-selected',String(!shop));$('tabShop').setAttribute('aria-selected',String(shop));localStorage.setItem('weeklyMenuTab',shop?'shop':'menu')}
+$('tabMenu').addEventListener('click',()=>showTab(false));$('tabShop').addEventListener('click',()=>showTab(true));
+function renderShop(){let checked=0,total=0;
+ $('shopping').innerHTML=Object.entries(SHOPPING).map(([category,items],group)=>`<div class="shopGroup"><h3>${safe(category)}</h3>${Object.entries(items).map(([name,amount],i)=>{let key=`weeklyBuy-${group}-${i}`,done=localStorage.getItem(key)==='1';total++;if(done)checked++;return `<div class="shopRow"><label><input type="checkbox" data-buy="${key}" ${done?'checked':''}><span>${safe(name)}</span></label><small>${safe(amount)}</small></div>`}).join('')}</div>`).join('');
+ $('shopProgress').textContent=`Отмечено ${checked} из ${total} · базовый ориентир на неделю (для 2 недель количество удвой)`;$('shopBadge').textContent=`${checked}/${total}`;
+ document.querySelectorAll('[data-buy]').forEach(input=>input.addEventListener('change',()=>{localStorage.setItem(input.dataset.buy,input.checked?'1':'0');renderShop()}));}
+$('reset').addEventListener('click',()=>{if(confirm('Сбросить все отметки покупок?')){Object.keys(localStorage).filter(k=>k.startsWith('weeklyBuy-')).forEach(k=>localStorage.removeItem(k));renderShop()}});
+['maleGoal','femaleGoal'].forEach((id,i)=>$(id).addEventListener('change',()=>{const val=Number($(id).value);if(!Number.isFinite(val)||val<1000||val>5000){renderSettings();return}goals[i]=val;localStorage.setItem(i?'goalF':'goalM',val);refreshFood()}));
+$('defaults').onclick=()=>{goals=[2300,1650];[['goalM',2300],['goalF',1650]].forEach(([k,v])=>localStorage.setItem(k,v));refreshFood()};
+refreshFood();renderShop();showTab(localStorage.getItem('weeklyMenuTab')==='shop');
